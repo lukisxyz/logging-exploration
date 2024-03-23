@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"io"
+	"log/slog"
+	"logging-challenge/greetings"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	"github.com/go-chi/chi/v5"
 )
+
+var log *slog.Logger
 
 func main() {
 	ctx := context.Background()
@@ -22,82 +23,50 @@ func main() {
 	signal.Notify(ch, syscall.SIGTERM)
 	go func() {
 		oscall := <-ch
-		log.Warn().Msgf("system call:%+v", oscall)
+		slog.Error("system call", oscall)
 		cancel()
 	}()
 
-	r := mux.NewRouter()
-	r.HandleFunc("/", handler)
-
 	// start: set up any of your logger configuration here if necessary
-	// set log level to debug
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	// prepare file for save log
+	opts := &slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelDebug,
+	}
 	lf, err := os.OpenFile(
-		"logs/app.log",
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0666,
+		"logs/app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666,
 	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to open log file")
+		log := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+		log.Error("unable to find log file")
 	}
+	mw := io.MultiWriter(os.Stdout, lf)
+	log = slog.New(&SlogContextHandler{slog.NewJSONHandler(
+		mw,
+		opts,
+	)})
+	slog.SetDefault(log)
 
-	multiwriters := zerolog.MultiLevelWriter(os.Stdout, lf)
-	log.Logger = zerolog.New(multiwriters).With().Timestamp().Logger()
 	// end: set up any of your logger configuration here
 
+	r := chi.NewRouter()
 	r.Use(logMiddleware)
 
-	listenerAddr := ":8080"
+	r.Mount("/", greetings.Router())
+
 	server := &http.Server{
-		Addr:    listenerAddr,
+		Addr:    ":8080",
 		Handler: r,
 	}
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("failed to listen and serve http server")
+			log.Error("failed to listen and serve http server", err)
 		}
 	}()
 	<-ctx.Done()
 
 	if err := server.Shutdown(context.Background()); err != nil {
-		log.Error().Err(err).Msg("failed to shutdown http server gracefully")
+		log.Error("failed to shutdown http server gracefully", err)
 	}
-}
-
-func logMiddleware(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log := log.Logger.With().
-			Str("request_id", uuid.New().String()).
-			Str("method", r.Method).
-			Str("path", r.URL.Path).
-			Str("query", r.URL.RawQuery).
-			Logger()
-		ctx := log.WithContext(r.Context())
-		h.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Query().Get("name")
-	ctx := r.Context()
-	log := log.Ctx(ctx).With().Str("func", "handler").Logger()
-	log.Debug().Msg("processing request")
-	res, err := greeting(ctx, name)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write([]byte(res))
-}
-
-func greeting(ctx context.Context, name string) (string, error) {
-	log := log.Ctx(ctx).With().Str("func", "greeting").Logger()
-	log.Debug().Msg("processing greeting")
-	if len(name) < 5 {
-		return fmt.Sprintf("Hello %s! Your name is to short\n", name), nil
-	}
-	return fmt.Sprintf("Hello %s!", name), nil
 }
