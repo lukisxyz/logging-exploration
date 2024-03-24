@@ -48,8 +48,8 @@ func greeting(ctx context.Context, name string) (string, error) {
 	if len(name) < 5 {
 		return fmt.Sprintf("Hello %s! Your name is too short\n", name), nil
 	}
-	if len(name) > 255 {
-		msg := fmt.Sprintf("Hello %s! Your name is more than 255 character\n", name)
+	if len(name) > 50 {
+		msg := fmt.Sprintf("Hello %s! Your name is more than 50 character\n", name)
 		return msg, errors.New(msg)
 	}
 	return fmt.Sprintf("Hi %s", name), nil

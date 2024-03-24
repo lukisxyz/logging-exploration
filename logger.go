@@ -52,6 +52,7 @@ func logMiddleware(next http.Handler) http.Handler {
 					"request",
 					slog.String("url", r.URL.String()),
 					slog.String("method", r.Method),
+					slog.String("user_agent", r.UserAgent()),
 				),
 			},
 		)
