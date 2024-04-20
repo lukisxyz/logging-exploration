@@ -31,7 +31,7 @@ for (( i=0; i<1000; i++ )); do
     random_delay=$(( ( RANDOM % 1900 ) + 100 ))
 
     # Send request using curl with delay
-    curl -A "$random_user_agent" -X GET "http://localhost:8080/?name=$name" >/dev/null 2>&1 &
+    curl -A "$random_user_agent" -X GET "http://localhost:80/?name=$name" >/dev/null 2>&1 &
 
     # Sleep for random delay
     sleep $(bc <<< "scale=2; $random_delay / 1000")
